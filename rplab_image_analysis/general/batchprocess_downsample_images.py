@@ -11,25 +11,18 @@ from skimage import io
 import tifffile as tiff
 
 # %%
-# defining source and destination
-# paths
-# src = r'Z:\Piyush_Galadriel\time lapse_10_12_22_day\Fish1' #raw test input can't have \ at end
-# trg = r'G:\Piyush_Mowgli\piyush_data_conv_downsampled'
-
-# %%
 # get user input for source and dest
-src = input("Enter the Parent folder for original images: ") #raw test input can't have \ at end
-trg = input("Enter the Destination for saving downsampled images: ")
+src = os.path.normpath(input("Enter the Parent folder for original images: "))
+trg = os.path.normpath(input("Enter the Destination for saving downsampled images: "))
 
 print(f'Source Dir: {src}')
 print(f'Target Dir: {trg}')
-flag = input('If this is incorrect, change it in the code. Continue? (y/n):')
+flag = input('Is this correct? (default-y/n):') or 'y'
 if(flag.casefold()!='y'):
     exit()
 
 # %%
-new_folder_name = src.split('\\')[-1] + '_downsampled'
-
+new_folder_name = os.path.split(src) + '_downsampled'
 new_trg_path = os.path.join(trg, new_folder_name)
 os.mkdir(new_trg_path)
 print(f'made dir: {new_trg_path}')
@@ -73,18 +66,6 @@ n = input('Enter downscaling factor for x and y dimensions (hit enter for defaul
 if type(n)!=int or n<=0:
     print('User Error: downscaling factor has to be a positive integer')
     exit()
-
-# %%
-# n = 4 #downscaling factor in x and y
-# zd, xd, yd = 1, 0.1625, 0.1625
-# orig_spacing = np.array([zd, xd, yd]) #change to the actual pixel spacing from the microscope
-# new_spacing = np.array([zd, xd*n, yd*n]) #downscale x&y by n
-
-# %%
-# print(f'Original pixel spacing in z,x,y is {zd, xd, yd}')
-# flag = input('If this is incorrect, change it in the code. Continue? (y/n):')
-# if(flag.casefold()!='y'):
-#     exit()
 
 # %%
 def read_n_downscale_image(read_path):
