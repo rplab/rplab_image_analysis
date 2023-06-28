@@ -1,0 +1,46 @@
+#Linux: Install miniconda
+#source https://developers.google.com/earth-engine/guides/python_install-conda#linux_2
+
+#1. Download installer and run
+wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh
+bash ~/miniconda.sh -b -p
+rm ~/miniconda.sh
+
+#2. Check
+source $HOME/miniconda3/bin/activate
+conda --help
+
+# optional: if bash cannot detect conda, add path to conda
+
+#Append conda to $PATH
+xed ~/.bashrc
+
+export PATH="$HOME/miniconda3/bin:$PATH"
+#OR
+printf '\n# add path to conda\nexport PATH="$HOME/miniconda3/bin:$PATH"\n' >> ~/.bashrc
+
+#3. Initialize conda
+conda init --help
+
+#4. restart shell
+
+#5. On linux prevent conda from loading up the base package as shell default
+conda config --set auto_activate_base false
+
+#6. Set libmamba solver as default
+conda update -n base conda
+conda install -n base conda-libmamba-solver
+conda config --set solver libmamba
+
+#Windows: Install miniconda
+
+#1. Download and install miniconda:
+https://docs.conda.io/en/latest/miniconda.html
+
+#2. Open conda terminal and run
+conda init --help
+
+#3. Set libmamba solver as default
+conda update -n base conda
+conda install -n base conda-libmamba-solver
+conda config --set solver libmamba
