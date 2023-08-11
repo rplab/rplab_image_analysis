@@ -25,7 +25,9 @@ Size: 11 GB.
 
 ## Immune cell images
 
-[get from Piyush]
+Time lapse images, Imaged at 3min time interval, total 80 timepoints
+
+Dropbox location: [ImmuneSystem/time lapse_CV_mpx_GFP_mpeg_mCherry](https://www.dropbox.com/home/Zebrafish%20Image%20Library/ImmuneSystem/time%20lapse_CV_mpx_GFP_mpeg_mCherry)
 
 
 ## Bacterial motility in vivo
