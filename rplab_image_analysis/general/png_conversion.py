@@ -1,151 +1,130 @@
 import os
+import numpy as np
 import pathlib
 import psutil
-import shutil
-import tifffile
+import skimage.io
+import utils.files as files
+from functools import partial
 from multiprocessing import Pool
-from skimage import io
 from tifffile import TiffFile
+from utils.metadata import MMMetadata
 
-C = "channel"
-P = "position"
-Z = "z"
-T = "time"
 
-def png_conversion_task(file_path_tuple):
-    root = file_path_tuple[0]
-    filename = file_path_tuple[1]
-    file_path = pathlib.Path(root).joinpath(filename).__str__()
-    write_path = root.replace(folder_path, dest_path)
-    filename_no_extension = filename.split(".")[0]
+PNG = files.ImageFileType.PNG.value[0]
 
-    stack = TiffFile(file_path)
-    series = stack.series[0]
-    is_micromanager = stack.pages[0].is_micromanager
-    if is_micromanager:
-        if len(series.shape)==2: #single images
-            #increase compress level(0-9) to gain few percent better 
-            #compression but much slower
-            new_file_path = pathlib.Path(write_path).joinpath(
-                f"{filename_no_extension}.png").__str__()
-            io.imsave(fname=new_file_path, 
-                    arr=stack.asarray(), 
-                    check_contrast=False, 
-                    plugin='imageio', 
-                    compress_level=3)
-        else: #image stacks
-            for page_num, page in enumerate(stack.pages):
-                coords_dict = get_coords_dict(series, page_num)
-                new_file_name = get_new_file_name(
-                    filename_no_extension, coords_dict)
-                new_file_path = pathlib.Path(write_path).joinpath(
-                    f"{new_file_name}.png").__str__()
-                io.imsave(fname=new_file_path, 
-                        arr=page.asarray(), 
-                        check_contrast=False, 
-                        plugin='imageio', 
-                        compress_level=3)
-        #shutil.rmtree() deletes dir and files where tif file was 
-        #os.removedirs() removes the entire directory tree but only if it's 
-        #completely empty.
-        shutil.rmtree(root)
-        os.removedirs(root)
 
-def get_coords_dict(series: tifffile.TiffPageSeries, page_num: int) -> dict:
+def batch_convert_to_pngs(source_dir: str | pathlib.Path, 
+                          dest_dir: str | pathlib.Path
+                          ) -> str:
+    source_path = pathlib.Path(source_dir)
+    dest_path = files.get_batch_dest_path(source_path, dest_dir, 
+                                          suffix = "_pngs")
+    dirs = []
+    for root, directories, filenames in os.walk(source_dir):
+        for filename in filenames:
+            dirs.append(root)
+    dirs = set(dirs)
+    if len(dirs) != 0:
+        files.shutil_copy_ignore_images(source_path, dest_path)
+        _start_multiprocess(source_path, dest_path, dirs)
+    return str(dest_path)      
+
+
+def _start_multiprocess(source_path: pathlib.Path, 
+                        dest_path: pathlib.Path, 
+                        dirs: list[pathlib.Path]):
     """
-    returns dictionary with image coords. ie if the image is from z-slice 21 
-    and taken with channel 2, coords_dict will be {"Z": 20, "C": 1}
+    Starts multiprocess to utilize full CPU when performing PNG conversion.
     """
-    dimensions_dict = get_dimensions_dict(series)
-    quotient = page_num
-    coords_dict = {}
-    for item in dimensions_dict.items():
-        quotient, remainder = divmod(quotient, item[1])
-        coords_dict[item[0]] = remainder
-        if quotient == 0:
-            break
-    return coords_dict
+    with Pool(psutil.cpu_count(logical=False)) as pool:
+        pool_func = partial(
+            _png_conversion_task, source_path, dest_path)
+        pool.map(pool_func, dirs)
 
-def get_dimensions_dict(series: tifffile.TiffPageSeries) -> dict:
-    #last two parts of shape are the image width and height. We only want 
-    #the coords.
-    coords = list(series.shape[:-2])
-    #this grabs the letter tags of the grabbed coord values.
-    axis_order = [axis for axis in series.axes[:len(coords)]]
-    #reverse because axes are in reverse order of how images they are stored 
-    #in tif stack.
-    coords.reverse()
-    axis_order.reverse()
-    return dict(zip(axis_order, coords))
 
-def get_new_file_name(filename_no_extension: str, coords_dict: dict) -> str:
-    """
-    Creates a new file name based on original name and coords in coords_dict.
+def _png_conversion_task(source_path: pathlib.Path, 
+                         dest_path: pathlib.Path, 
+                         dir: pathlib.Path):
+    file_paths = files.get_image_files_in_dir(dir)
+    if files.get_file_type(file_paths[0]) == files.ImageFileType.TIF:
+        _tif_png_conversion_task(file_paths, dest_path, source_path)
 
-    coords_dict: dict - dictionary that contains axes and coordinates for said 
-    axis, ie if the image's axes are "CZ" and there are four channels and 8 
-    z-slices, then coords_dict = {"C": 4, "Z": 8}.
-    """
-    if "C" in coords_dict.keys():
-        channel_num = coords_dict['C']
-    else:
-        channel_num = 0
-    if "P" in coords_dict.keys():
-        position_num = coords_dict['P']
-    else:
-        position_num = 0
-    if "T" in coords_dict.keys():
-        time_num = coords_dict['T']
-    else:
-        time_num = 0
-    if "Z" in coords_dict.keys():
-        z_num = coords_dict['Z']
-    else:
-        z_num = 0
-    return f"{filename_no_extension}_{C}{channel_num:03d}_{P}{position_num:03d}_{T}{time_num:03d}_{Z}{z_num:03d}"
 
-def file_in_use(file_path):
-    """
-    Checks to see if file located at file_path is currently in use by process
-    listed in psutil.processess_iter(). If file is in use, returns True. Else, False.
-    """
-    for process in psutil.process_iter():
-        try:
-            for item in process.open_files():
-                if file_path == item.path:
-                    return True
-        except Exception:
-            pass
-    return False
+def _tif_png_conversion_task(file_paths: list[pathlib.Path], 
+                             dest_path: pathlib.Path, 
+                             source_path: pathlib.Path):
+    #keep track of page_num outside of file loop in case there are multiple 
+    #tif files in a single directory.
+    first_path = file_paths[0]
+    page_num = 0
+    for file_path in file_paths:
+        stack = TiffFile(file_path)
+        is_single_image = _get_stack_num_dims(stack) == 2
+        if is_single_image:
+            save_path = _get_single_save_path(
+                file_path, source_path, dest_path)
+            image = stack.asarray()
+            _write_png(save_path, image)
+        else:
+            for page in stack.pages:
+                save_path = _get_stack_save_path(
+                    first_path, source_path, dest_path, page_num)
+                image = page.asarray()
+                _write_png(save_path, image)
+                page_num += 1
 
-if __name__ == "__main__":
-    source_path = r"/volume1"
-    dir_list = pathlib.Path(source_path).iterdir()
-    #"@" appears in built-in directories in Synology that aren't shared folders.
-    shared_folders = [d.__str__() for d in dir_list if d.is_dir() and not "@" in d.__str__()]
-    file_path_tuple_lists = []
-    for folder_path in shared_folders:
-        file_path_tuples = []
-        for root, subfolders, filenames in os.walk(folder_path):
-            if "recycl" not in root and "Piyush_data_test" in root:
-                for filename in filenames:
-                    in_use = file_in_use(pathlib.Path(root).joinpath(
-                        filename).__str__())
-                    is_tif = filename.endswith("tif") or filename.endswith(
-                        "tifffile")
-                    if is_tif and not in_use:
-                        file_path_tuples.append((root, filename))
-        file_path_tuple_lists.append(file_path_tuples)
-        png_dir_made = False
-        for file_path_tuples in file_path_tuple_lists:
-            if len(file_path_tuples) != 0:
-                if not png_dir_made:
-                    dest_path = pathlib.Path(folder_path).joinpath(
-                        "png").__str__()
-                    shutil.copytree(folder_path, 
-                                    dest_path,
-                                    ignore=shutil.ignore_patterns(
-                                        '*.tifffile', 'tmp*', '*.tif'))
-                    png_dir_made = True
-                with Pool(psutil.cpu_count(logical=False)) as pool:
-                    pool.map(png_conversion_task, file_path_tuples)
+
+def _get_stack_num_dims(stack: TiffFile):
+    return len(stack.series[0].shape)
+
+
+def _get_single_save_path(file_path: pathlib.Path, 
+                          source_path: pathlib.Path, 
+                          dest_path: pathlib.Path
+                          ) -> pathlib.Path:
+    new_name = _get_single_image_name(file_path)
+    rel_path = _get_rel_path(source_path, file_path, new_name)
+    return dest_path.joinpath(rel_path)
+
+
+def _get_single_image_name(file_path: pathlib.Path) -> str:
+    old_name = file_path.name
+    new_name = files.remove_mmstack(old_name)
+    new_name = files.remove_image_extn(old_name)
+    return new_name
+
+
+def _get_rel_path(source_path: pathlib.Path, 
+                  file_path: pathlib.Path, 
+                  new_name: str
+                  ) -> pathlib.Path:
+    old_name = file_path.name
+    rel_path = file_path.relative_to(source_path)
+    return pathlib.Path(str(rel_path).replace(old_name, new_name))
+
+
+def _get_stack_save_path(file_path: pathlib.Path, 
+                         source_path: pathlib.Path, 
+                         dest_path: pathlib.Path, 
+                         page_num: int
+                         ) -> pathlib.Path:
+    new_name = _get_stack_image_name(file_path, page_num)
+    rel_path = _get_rel_path(source_path, file_path, new_name)
+    return dest_path.joinpath(rel_path)
+
+
+def _get_stack_image_name(file_path: pathlib.Path, page_num: int) -> str:
+    name = file_path.name
+    name = files.remove_mmstack(name)
+    name = files.remove_image_extn(name)
+    metadata = MMMetadata(file_path).get_image_metadata(page_num)
+    coords = metadata.get_coords_str()
+    return f"{name}_{coords}{PNG}"
+
+
+def _write_png(save_path: pathlib.Path, image: np.ndarray):
+    if not save_path.exists():
+        skimage.io.imsave(
+            fname=save_path, arr=image, check_contrast=False, plugin='imageio', 
+            compress_level=3)
+    
