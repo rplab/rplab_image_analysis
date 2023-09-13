@@ -19,3 +19,8 @@ To run tests in a specific file, e.g. test_general.py, use the following command
 To run a specific test, use the -k flag, i.e.:
 
     python -m pytest -k "test_get_downsample_tuple"
+
+To dump output (such as print statements) to the command prompt, use a trailing
+"-s" flag, i.e.:
+
+    python -m pytest -k "test_get_downsample_tuple" -s
