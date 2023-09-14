@@ -3,8 +3,7 @@ import pathlib
 import numpy as np
 import utils.files as files
 import skimage.io, skimage.transform
-from tifffile import TiffFile
-from utils import metadata
+
 
 def downsample_batch(source_dir: str | pathlib.Path, 
                      dest_dir: str | pathlib.Path, 
