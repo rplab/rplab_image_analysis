@@ -1,5 +1,5 @@
 import numpy as np
-from general import create_batch_max_projections
+from general.max_projections import create_batch_max_projections
 from general.downsampling import get_downsampled_image, downsample_batch
 from general.downsampling import _get_downsample_tuple
 from general.stitching import stitch_images
