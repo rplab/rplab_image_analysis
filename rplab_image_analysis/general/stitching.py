@@ -2,7 +2,7 @@ import pathlib
 import numpy as np
 import skimage
 import skimage.io
-from general import get_max_projection
+from general.max_projections import get_max_projection
 from utils.metadata import MMMetadata, MMImageMetadata, is_micro_manager
 
 
