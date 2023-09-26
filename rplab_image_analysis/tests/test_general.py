@@ -1,10 +1,10 @@
 import numpy as np
-from general.max_projections import create_batch_max_projections
-from general.downsampling import get_downsampled_image, downsample_batch
-from general.downsampling import _get_downsample_tuple
-from general.stitching import stitch_images
-from general.png_conversion import batch_convert_to_pngs
-from general.background_subtraction import median_subtract_batch
+from rplab_image_analysis.general.max_projections import create_batch_max_projections
+from rplab_image_analysis.general.downsampling import get_downsampled_image, downsample_batch
+from rplab_image_analysis.general.downsampling import _get_downsample_tuple
+from rplab_image_analysis.general.stitching import stitch_images
+from rplab_image_analysis.general.png_conversion import batch_convert_to_pngs
+from rplab_image_analysis.general.background_subtraction import median_subtract_batch
 
 
 class TestDownsample(object):
@@ -33,11 +33,11 @@ class TestMaxProjections(object):
 
 class TestStitching(object):
     def test_stitch_images(self):
-        base_dir = r"Z:\7Jun2023 Overnight\Acquisition\fish1\pos1\zstack\GFP\timepoint1\fish1_pos1_zstack_GFP_timepoint1_MMStack.ome.tif"
+        base_dir = r"Z:\25Sept2023 Fixed Fish\GF\Fish 2\Acquisition\fish1\pos1\zstack\gfp\timepoint1\fish1_pos1_zstack_GFP_timepoint1_MMStack.ome.tif"
         pos_nums = [1,2,3,4]
         paths = [base_dir.replace("pos1", f"pos{pos_num}") for pos_num in pos_nums]
 
-        save_path = r"C:\Jonah\Misc\stitcher_test\stitched.tif"
+        save_path = r"C:\Jonah\Misc\Julia\GF Fish 2\stitched_gfp.tif"
         stitch_images(paths, save_path, num_90_rotations=3,
                       x_stage_is_inverted=True)
 

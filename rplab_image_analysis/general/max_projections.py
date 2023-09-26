@@ -2,7 +2,7 @@ import os
 import pathlib
 import numpy as np
 import skimage.io
-import utils.files as files
+import rplab_image_analysis.utils.files as files
 from tifffile import TiffFile
 
 

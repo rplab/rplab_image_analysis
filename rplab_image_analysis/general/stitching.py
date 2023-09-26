@@ -2,8 +2,8 @@ import pathlib
 import numpy as np
 import skimage
 import skimage.io
-from general.max_projections import get_max_projection
-from utils.metadata import MMMetadata, MMImageMetadata, is_micro_manager
+import rplab_image_analysis.utils.metadata as metadata
+from rplab_image_analysis.general.max_projections import get_max_projection
 
 
 def stitch_images(file_list: str,
@@ -44,7 +44,7 @@ def stitch_images(file_list: str,
     """
     file_list = [pathlib.Path(file) for file in file_list]
     save_path = pathlib.Path(save_path)
-    if is_micro_manager(file_list[0]):
+    if metadata.is_micro_manager(file_list[0]):
         stitched_image = _stitch_mm_images(
             file_list, pixel_size, x_stage_is_inverted, y_stage_is_inverted, 
             num_90_rotations)
@@ -62,7 +62,7 @@ def _stitch_mm_images(file_list: list[pathlib.Path],
     """
     inversion = (x_stage_is_inverted, y_stage_is_inverted)
     for region_num, file_path in enumerate(file_list):
-        image_metadata = MMMetadata(file_path).get_image_metadata(0)
+        image_metadata = metadata.MMMetadata(file_path).get_image_metadata(0)
         meta_dims = _get_meta_dims(image_metadata)
         new_image = _get_new_image(file_path, num_90_rotations, meta_dims)
         positions = _get_positions(image_metadata)
@@ -82,7 +82,7 @@ def _stitch_mm_images(file_list: list[pathlib.Path],
     return stitched_image
 
 
-def _get_meta_dims(image_metadata: MMImageMetadata) -> list[int]:
+def _get_meta_dims(image_metadata: metadata.MMImageMetadata) -> list[int]:
     """
     gets image height and width and returns it as list.
     """
@@ -113,7 +113,7 @@ def _rotate_image_dims(image_dims: list, num_90_rotations: int):
         image_dims[1], image_dims[0] = image_dims[0], image_dims[1]
 
 
-def _get_positions(image_metadata: MMImageMetadata) -> tuple:
+def _get_positions(image_metadata: metadata.MMImageMetadata) -> tuple:
     """
     gets x and y stage positions according to image metadata and returns it
     as tuple.
@@ -141,7 +141,7 @@ def _get_image_height(image: np.ndarray) -> int:
     return image.shape[-2]
 
 
-def _get_pixel_size(image_metadata: MMImageMetadata, ds_factor: int):
+def _get_pixel_size(image_metadata: metadata.MMImageMetadata, ds_factor: int):
     """
     returns pixel size calculated from pixel size in metadata, binning, and
     downsample factor.

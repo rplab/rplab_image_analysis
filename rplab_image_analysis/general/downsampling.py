@@ -1,8 +1,8 @@
 import os
 import pathlib
 import numpy as np
-import utils.files as files
 import skimage.io, skimage.transform
+import rplab_image_analysis.utils.files as files
 
 
 def downsample_batch(source_dir: str | pathlib.Path, 
