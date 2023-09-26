@@ -7,7 +7,7 @@ import utils.files as files
 from functools import partial
 from multiprocessing import Pool
 from tifffile import TiffFile
-from utils.metadata import MMMetadata
+from rplab_image_analysis.utils.metadata import MMMetadata
 
 
 PNG = files.ImageFileType.PNG.value[0]

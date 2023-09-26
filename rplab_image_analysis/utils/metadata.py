@@ -3,7 +3,7 @@ import pathlib
 from ast import literal_eval
 from configparser import ConfigParser
 from tifffile import TiffFile
-from utils.files import FileSubtype, get_file_subtype
+from rplab_image_analysis.utils.files import FileSubtype, get_file_subtype
 
 class MMMetadata(object):
     """
