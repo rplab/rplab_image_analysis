@@ -31,14 +31,21 @@ conda config --set auto_activate_base false
 conda update -n base conda
 conda install -n base conda-libmamba-solver
 conda config --set solver libmamba
-
+#-----------------------------------------------------------------------------------------
 #Windows: Install miniconda
 
 #1. Download and install miniconda:
-https://docs.conda.io/en/latest/miniconda.html
+https://docs.conda.io/en/latest/miniconda.html (or do a google search)
+Before installation remove other python or conda installations to prevent breaking miniconda
+
 
 #2. Open conda terminal and run
 conda init --help
+
+#3. Set libmamba solver as default
+conda update -n base conda
+conda install -n base conda-libmamba-solver
+conda config --set solver libmamba
 
 #3. Set libmamba solver as default
 conda update -n base conda
