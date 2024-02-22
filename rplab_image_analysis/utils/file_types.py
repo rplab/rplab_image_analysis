@@ -122,17 +122,6 @@ def is_ls_pycro_notes(file_path: str | pathlib.Path):
     If file_path is an ls_pycro_notes file, returns True.
     """
     return get_file_subtype(file_path) == FileSubtype.LS_NOTES
-    
-
-def is_mm(file_path: str | pathlib.Path) -> bool:
-    """
-    If file_path is a tif with MM metadata, returns true.
-    """
-    try:
-        metadata.MMMetadata(file_path)
-        return True
-    except FileNotFoundError:
-        return False
 
 
 def is_mm_metadata(file_path: str | pathlib.Path):
