@@ -1,10 +1,19 @@
-import os
+"""
+This module contains code related to downsampling.
+"""
+
+
 import pathlib
 import numpy as np
-import utils.files as files
-import skimage.io, skimage.transform
-from tifffile import TiffFile
-from utils import metadata
+
+import skimage.transform
+
+import rplab_image_analysis.utils.files as files
+
+
+DS = "_ds"
+DOWNSAMPLED = "_downsampled"
+
 
 def downsample_batch(source_dir: str | pathlib.Path, 
                      dest_dir: str | pathlib.Path, 
@@ -23,23 +32,23 @@ def downsample_batch(source_dir: str | pathlib.Path,
     
     downsample_factor: int
         sample that images will be downsampled by.
+
+    ### Returns:
+    
+    dest_path: str
+        returns directory where images were written to.
     """
     source_path = pathlib.Path(source_dir)
-    dest_path = files.get_batch_dest_path(source_path, dest_dir, 
-                                          suffix = "_downsampled")
-    files.shutil_copy_ignore_images(source_path, dest_path)
-    for root, directories, filenames in os.walk(source_path):
-        for filename in filenames:
-            if files.get_file_type(filename) in files.ImageFileType:
-                file_path = pathlib.Path(root).joinpath(filename)
-                save_path = files.get_save_path(
-                    file_path, source_path, dest_path, "_ds")
-                downsample_image_file(file_path, save_path, downsample_factor)
+    dest_path = files.get_batch_path(source_path, dest_dir, DOWNSAMPLED)
+    files.copytree_ignore_images(source_path, dest_path)
+    for file in files.yield_walk_image_files(source_path):
+        save_path = files.get_save_path(file, source_path, dest_path, DS)
+        downsample_image_file(file, save_path, downsample_factor)
     return str(dest_path)
 
 
 def downsample_image_file(file_path: str | pathlib.Path, 
-                          save_path: str | pathlib.Path, 
+                          save_path: str | pathlib.Path,
                           downsample_factor: int):
     """
     Downsamples image file by downsample factor.
@@ -55,9 +64,11 @@ def downsample_image_file(file_path: str | pathlib.Path,
     downsample_factor: int
         factor that images will be downsampled by.
     """
-    image = files.read_images(file_path)
+    file_path = pathlib.Path(file_path)
+    save_path = pathlib.Path(save_path)
+    image = files.read_image(file_path)
     image = get_downsampled_image(image, downsample_factor)
-    skimage.io.imsave(save_path, image)
+    files.save_image(save_path, image)
 
 
 def get_downsampled_image(image: np.ndarray, downsample_factor: int
@@ -65,17 +76,8 @@ def get_downsampled_image(image: np.ndarray, downsample_factor: int
     """
     downsamples an single image in (x,y) dimensions by downample_factor. 
     """
-    downsample_tuple = _get_downsample_tuple(image.ndim, downsample_factor)
-    return _get_downscaled_image(image, downsample_tuple)
-
-
-def _get_downscaled_image(image: np.ndarray, downsample_tuple: tuple[int]
-                          ) -> np.ndarray:
-    """
-    downscales given image according to downsample_tuple and returns it as
-    ndarray.
-    """
     dtype = image.dtype
+    downsample_tuple = _get_downsample_tuple(image.ndim, downsample_factor)
     image = skimage.transform.downscale_local_mean(image, downsample_tuple)
     #downscale_local_mean returns float64, so must cast back to original dtype.
     return image.astype(dtype)
