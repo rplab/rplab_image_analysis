@@ -279,7 +279,7 @@ class LSPycroMetadata(ConfigParser):
 
 def from_same_mm_sequence(file_list: list[str | pathlib.Path]) -> bool:
     first_file = pathlib.Path(file_list[0])
-    if file_types.is_mm(first_file):
+    if is_mm(first_file):
         first_name = files.get_reduced_filename(pathlib.Path(file_list[0]))
         for file in file_list[1:]:
             filename = files.get_reduced_filename(pathlib.Path(file))
@@ -289,5 +289,17 @@ def from_same_mm_sequence(file_list: list[str | pathlib.Path]) -> bool:
         else:
             return True
     else:
+        return False
+    
+
+def is_mm(file_path: str | pathlib.Path) -> bool:
+    """
+    If file_path is an MM metadata file or file_path directory contains 
+    MM metadata file, returns True
+    """
+    try:
+        MMMetadata(file_path)
+        return True
+    except FileNotFoundError:
         return False
     
