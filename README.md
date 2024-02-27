@@ -27,7 +27,7 @@ SOFTWARE.
 <br />
 <div align="center">
   <a href="https://github.com/rplab/LS_Pycro_App">
-    <img src="https://raw.githubusercontent.com/rplab/LS_Pycro_App/master/app_icon.png" alt="Logo" width="80" height="80">
+    <img src="https://raw.githubusercontent.com/rplab/rplab_image_analysis/main/app_icon.png" alt="Logo" width="80" height="80">
   </a>
 
 ## rplab_image_analysis
