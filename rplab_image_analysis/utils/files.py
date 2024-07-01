@@ -221,7 +221,6 @@ def get_save_path(file_path: pathlib.Path,
     """
     rel_path = file_path.relative_to(source_path)
     save_path = dest_path.joinpath(rel_path)
-    save_path = remove_mmstack(save_path)
     save_path = remove_image_extn(save_path)
     extn = get_file_extn(file_path)
     new_file_end = f"{file_name_end}{extn}" 
