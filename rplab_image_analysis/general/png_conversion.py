@@ -89,7 +89,6 @@ def _get_single_save_path(file_path: pathlib.Path,
 
 def _get_single_image_name(file_path: pathlib.Path) -> str:
     old_name = file_path.name
-    new_name = files.remove_mmstack(old_name)
     new_name = files.remove_image_extn(old_name)
     return new_name
 
@@ -115,7 +114,6 @@ def _get_stack_save_path(file_path: pathlib.Path,
 
 def _get_stack_image_name(file_path: pathlib.Path, page_num: int) -> str:
     name = file_path.name
-    name = files.remove_mmstack(name)
     name = files.remove_image_extn(name)
     metadata = MMMetadata(file_path).get_image_metadata(page_num)
     coords = metadata.get_coords_str()

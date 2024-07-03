@@ -2,13 +2,14 @@ import pathlib
 import numpy as np
 import skimage
 import skimage.io
+import tifffile
+
 import rplab_image_analysis.utils.metadata as metadata
 from rplab_image_analysis.general.max_projections import get_max_projection
 
 
 def stitch_images(file_list: str,
                   save_path: str,
-                  pixel_size: int = 0.1625,
                   x_stage_is_inverted: bool = False,
                   y_stage_is_inverted: bool = False,
                   num_90_rotations: int = 0):
@@ -46,13 +47,12 @@ def stitch_images(file_list: str,
     save_path = pathlib.Path(save_path)
     if metadata.is_micro_manager(file_list[0]):
         stitched_image = _stitch_mm_images(
-            file_list, pixel_size, x_stage_is_inverted, y_stage_is_inverted, 
+            file_list, x_stage_is_inverted, y_stage_is_inverted, 
             num_90_rotations)
     skimage.io.imsave(save_path, stitched_image, check_contrast=False)
 
 
 def _stitch_mm_images(file_list: list[pathlib.Path], 
-                      pixel_size: float, 
                       x_stage_is_inverted: bool, 
                       y_stage_is_inverted: bool, 
                       num_90_rotations: int
@@ -61,106 +61,91 @@ def _stitch_mm_images(file_list: list[pathlib.Path],
     Stitches images with micro-manager metadata. 
     """
     inversion = (x_stage_is_inverted, y_stage_is_inverted)
-    for region_num, file_path in enumerate(file_list):
-        image_metadata = metadata.MMMetadata(file_path).get_image_metadata(0)
-        meta_dims = _get_meta_dims(image_metadata)
-        new_image = _get_new_image(file_path, num_90_rotations, meta_dims)
-        positions = _get_positions(image_metadata)
-
-        if region_num == 0:
-            start_positions = positions
-            ds_factor = _get_ds_factor(new_image, meta_dims)
-            pixel_size = _get_pixel_size(image_metadata, ds_factor)
-            stitched_x_range, stitched_y_range = _init_ranges(meta_dims)
-            stitched_image = new_image
-        else:
-            x_offset, y_offset = _get_xy_offsets(
-                start_positions, positions, inversion, pixel_size)
-            stitched_image = _stitch_new_image(
-                new_image, stitched_image, x_offset, y_offset, meta_dims, 
-                stitched_x_range, stitched_y_range)
+    if len(file_list) > 1:
+        stitched_image = _stitch_multi_file_mm(file_list, num_90_rotations, inversion)
+    else:
+        stitched_image = _stitch_multi_region_mm(file_list[0], num_90_rotations, inversion)
     return stitched_image
 
 
-def _get_meta_dims(image_metadata: metadata.MMImageMetadata) -> list[int]:
-    """
-    gets image height and width and returns it as list.
-    """
-    #[height, width] to stay consistent with array dimensions order
-    return [image_metadata.image_height, image_metadata.image_width]
+def _stitch_multi_file_mm(file_list, num_90_rotations, inversion):
+    for file_num, file_path in enumerate(file_list):
+        new_image = get_max_projection(file_path)
+        image_metadata = metadata.MMMetadata(file_path).get_image_metadata(0)
+        position = _get_position(image_metadata)
+        if file_num == 0:
+            start_position = position
+            ds_factor = _get_ds_factor(new_image.shape[-2], image_metadata.image_height)
+            pixel_size = _get_pixel_size(image_metadata.pixel_size, ds_factor)
+            stitched_image = np.rot90(new_image, num_90_rotations)
+            x_offset_range, y_offset_range = _get_start_ranges(stitched_image.shape[-1], stitched_image.shape[-2], num_90_rotations)
+        else:
+            new_image = np.rot90(new_image, num_90_rotations)
+            x_offset, y_offset = _get_xy_offsets(
+                start_position, position, inversion, pixel_size)
+            stitched_image = _stitch_new_image(
+                new_image, stitched_image, x_offset, y_offset, 
+                x_offset_range, y_offset_range)
+    return stitched_image
+            
+
+def _stitch_multi_region_mm(file, num_90_rotations, inversion):
+    meta = metadata.MMMetadata(file)
+    for page_num, page in enumerate(tifffile.TiffFile(file).pages):
+        new_image = page.asarray()
+        image_metadata = meta.get_image_metadata(page_num)
+        position = _get_position(image_metadata)
+        if page_num == 0:
+            start_position = position
+            ds_factor = _get_ds_factor(new_image.shape[-2], image_metadata.image_height)
+            pixel_size = _get_pixel_size(image_metadata.pixel_size, ds_factor)
+            stitched_image = np.rot90(new_image, num_90_rotations)
+            x_offset_range, y_offset_range = _get_start_ranges(image_metadata)
+        else:
+            new_image = np.rot90(new_image, num_90_rotations)
+            x_offset, y_offset = _get_xy_offsets(
+                start_position, position, inversion, pixel_size)
+            stitched_image = _stitch_new_image(
+                new_image, stitched_image, x_offset, y_offset, 
+                x_offset_range, y_offset_range)
+    return stitched_image
 
 
-def _get_new_image(file_path: pathlib.Path, 
-                   num_90_rotations: int, 
-                   image_dims: list[int]
-                   ) -> np.ndarray:
-    """
-    Creates maximum projection of images in image_file, rotates image according
-    to num_90_rotations, and then returns max projection as ndarray.
-    """
-    new_image = get_max_projection(file_path)
-    if num_90_rotations != 0:
-        new_image = np.rot90(new_image, k=num_90_rotations)
-        _rotate_image_dims(image_dims, num_90_rotations)
-    return new_image
-
-
-def _rotate_image_dims(image_dims: list, num_90_rotations: int):
-    """
-    Swaps image dims according to rotation of image.
-    """
-    if num_90_rotations % 2 == 1:
-        image_dims[1], image_dims[0] = image_dims[0], image_dims[1]
-
-
-def _get_positions(image_metadata: metadata.MMImageMetadata) -> tuple:
-    """
-    gets x and y stage positions according to image metadata and returns it
-    as tuple.
-    """
-    return (image_metadata.x_pos, image_metadata.y_pos)
-
-
-def _get_ds_factor(stitched_image: np.ndarray, image_dims: list[int]) -> int:
+def _get_ds_factor(image_height: np.ndarray, meta_height: int) -> int:
     """
     Gets downsample factor to be used in determining correct pixel size of 
     image.
     """
-    image_height = _get_image_height(stitched_image)
-    meta_height = image_dims[0]
-    if image_height != meta_height:
-        return int(meta_height/image_height)
-    else:
-        return 1
-    
-
-def _get_image_height(image: np.ndarray) -> int:
-    """
-    returns height of image
-    """
-    return image.shape[-2]
+    return int(meta_height/image_height)
 
 
-def _get_pixel_size(image_metadata: metadata.MMImageMetadata, ds_factor: int):
-    """
-    returns pixel size calculated from pixel size in metadata, binning, and
-    downsample factor.
-    """
-    return image_metadata.pixel_size*image_metadata.binning*ds_factor
+def _get_pixel_size(meta_pixel_size: float, ds_factor: float):
+    return meta_pixel_size*ds_factor
 
 
-def _init_ranges(image_dims: list[int]) -> tuple[list]:
+def _get_position(image_metadata: metadata.MMImageMetadata):
+    return (image_metadata.x_pos, image_metadata.y_pos)
+
+
+def _get_start_ranges(image_width: int, 
+                      image_height: int, 
+                      num_90_rotations: int
+                      ) -> tuple[list[int]]:
     """
     Initializes x and y ranges to be used in dynamic resizing of stitched
     image.
     """
-    stitched_x_range = [0, image_dims[1]]
-    stitched_y_range = [0, image_dims[0]]
+    if num_90_rotations % 2 == 0:
+        stitched_x_range = [0, image_width]
+        stitched_y_range = [0, image_height]
+    else:
+        stitched_x_range = [0, image_width]
+        stitched_y_range = [0, image_height]
     return stitched_x_range, stitched_y_range
 
 
-def _get_xy_offsets(start_positions: list[int], 
-                    positions: list[int], 
+def _get_xy_offsets(start_position: list[int], 
+                    position: list[int], 
                     inversion: list[bool], 
                     pixel_size: float
                     ) -> tuple[int]:
@@ -168,9 +153,9 @@ def _get_xy_offsets(start_positions: list[int],
     Returns x and y pixel offets relative to the position of the first image
     added to the stitched image. 
     """
-    x_offset = _get_pixel_offset(start_positions[0], positions[0], pixel_size)
+    x_offset = _get_pixel_offset(start_position[0], position[0], pixel_size)
     x_offset *= -1 if inversion[0] else 1
-    y_offset = _get_pixel_offset(start_positions[1], positions[1], pixel_size)
+    y_offset = _get_pixel_offset(start_position[1], position[1], pixel_size)
     y_offset *= -1 if inversion[1] else 1
     return x_offset, y_offset
 
@@ -190,83 +175,24 @@ def _stitch_new_image(new_image: np.ndarray,
                       stitched_image: np.ndarray, 
                       x_offset: int, 
                       y_offset: int, 
-                      image_dims: list[int], 
-                      stitched_x_range: list[int], 
-                      stitched_y_range: list[int]
+                      x_offset_range: list[int], 
+                      y_offset_range: list[int]
                       ) -> np.ndarray:
     """
     Stitches new_image with stitched_image based on stage positions in
     Micro-Manager metadata.
     """
-    new_x_range, new_y_range = _get_new_image_range(
-        x_offset, y_offset, image_dims)
-    x_extensions, y_extensions = _get_stitched_extensions(
-        stitched_x_range, stitched_y_range, new_x_range, new_y_range)
-    stitched_x_range, stitched_y_range = _update_stitched_range(
-        stitched_x_range, stitched_y_range, new_x_range, new_y_range)
-    
+    new_shape = new_image.shape
+    x_extensions, y_extensions = _get_extension_nums(
+        new_shape, x_offset, y_offset, x_offset_range, y_offset_range)
+    x_offset_range, y_offset_range = _update_offset_range(
+        new_shape, x_offset, y_offset, x_offset_range, y_offset_range)
     stitched_image = _add_stitched_extensions(
         stitched_image, x_extensions, y_extensions)
-    slices = _get_new_image_position_slices(
-        x_extensions, y_extensions, image_dims)
-    #If two images are added with the same stage position (ie, if z-stack 
-    # is split into two files because it's too large for one), second region
-    #would just overwrite the first. This takes a max projection of the
-    #newly added region and the previously added one so this doesn't 
-    #happen.
-    stitched_region = stitched_image[slices[1], slices[0]]
-    region_array = np.array((stitched_region, new_image))
-    new_region = np.max(region_array, 0)
-    stitched_image[slices[1], slices[0]] = new_region
+    slices = _get_new_image_slices(
+        new_shape, x_extensions, y_extensions)
+    stitched_image = _place_new_image(stitched_image, new_image, slices)
     return stitched_image
-
-
-def _get_new_image_range(x_stage_offset: int, 
-                         y_stage_offset: int, 
-                         image_dims: list[int, int]
-                         ) -> tuple[list[int], list[int]]:
-    """
-    Gets min and max pixel positions of new_image based on x_stage_offset,
-    y_stage_offset, and width and height of new_image.
-    """
-    new_x_range = [x_stage_offset, x_stage_offset + image_dims[1]]
-    new_y_range = [y_stage_offset, y_stage_offset + image_dims[0]]
-    return new_x_range, new_y_range
-
-
-def _get_stitched_extensions(stitched_x_range: list[int], 
-                             stitched_y_range: list[int], 
-                             new_image_x_range: list[int], 
-                             new_image_y_range: list[int]
-                             ) -> tuple[list[int]]:
-    """
-    Gets stitched extensions--number of rows and columns to be concatenated
-    to stitched_image--to make room for new_image to be added.
-    """
-    x_min_extension = stitched_x_range[0] - new_image_x_range[0]
-    x_max_extension = new_image_x_range[1] - stitched_x_range[1]
-    y_min_extension = stitched_y_range[0] - new_image_y_range[0]
-    y_max_extension = new_image_y_range[1] - stitched_y_range[1]
-    x_extensions = [x_min_extension, x_max_extension]
-    y_extensions = [y_min_extension, y_max_extension]
-    return x_extensions, y_extensions
-
-
-def _update_stitched_range(stitched_x_range: list[int], 
-                           stitched_y_range: list[int], 
-                           new_x_range: list[int], 
-                           new_y_range: list[int]
-                           ) -> tuple[list[int]]:
-    """
-    Determines new stitched image range by comparing min and max values of
-    old stitched image range and new image range.
-    """
-    
-    stitched_x_range[0] = min(stitched_x_range[0], new_x_range[0])
-    stitched_y_range[0] = min(stitched_y_range[0], new_y_range[0])
-    stitched_x_range[1] = max(stitched_x_range[1], new_x_range[1])
-    stitched_y_range[1] = max(stitched_y_range[1], new_y_range[1])
-    return stitched_x_range, stitched_y_range
 
 
 def _add_stitched_extensions(stitched_image: np.ndarray, 
@@ -280,38 +206,103 @@ def _add_stitched_extensions(stitched_image: np.ndarray,
     """
     dtype = stitched_image.dtype
     if x_extensions[0] > 0:
-        extension = np.zeros([stitched_image.shape[0], x_extensions[0]])
-        stitched_image = np.c_[extension, stitched_image]
+        left_extension = np.zeros([stitched_image.shape[0], x_extensions[0]])
+        #The axis=1 argument concatentates on along the second (x) axis
+        stitched_image = np.concatenate([left_extension, stitched_image], axis=1)
     if x_extensions[1] > 0:
-        extension = np.zeros([stitched_image.shape[0], x_extensions[1]])
-        stitched_image = np.c_[stitched_image, extension]
+        right_extension = np.zeros([stitched_image.shape[0], x_extensions[1]])
+        stitched_image = np.concatenate([stitched_image, right_extension], axis=1)
     if y_extensions[0] > 0:
-        extension = np.zeros([y_extensions[0], stitched_image.shape[1]])
-        stitched_image = np.concatenate([extension, stitched_image])
+        top_extension = np.zeros([y_extensions[0], stitched_image.shape[1]])
+        stitched_image = np.concatenate([top_extension, stitched_image])
     if y_extensions[1] > 0:
-        extension = np.zeros([y_extensions[1], stitched_image.shape[1]])
-        stitched_image = np.concatenate([stitched_image, extension])
+        bot_extension = np.zeros([y_extensions[1], stitched_image.shape[1]])
+        stitched_image = np.concatenate([stitched_image, bot_extension])
 
-    #numpy concatenation doesn't seem to conserve datatype, so ensure
+    #numpy concatenation doesn't conserve datatype, so ensure
     #datatype is same as original stitched image.
     return stitched_image.astype(dtype)
 
 
-def _get_new_image_position_slices(x_extensions: list[int], 
-                                   y_extensions: list[int], 
-                                   image_dims: list[int]
-                                   ) -> tuple[slice, slice]:
+def _get_extension_nums(new_shape: tuple[int],
+                        x_offset: int,
+                        y_offset: int,
+                        x_offset_range: list[int],
+                        y_offset_range: list[int]
+                        ) -> tuple[list[int]]:
+    """
+    Gets stitched extensions--number of rows and columns to be concatenated
+    to stitched_image--to make room for new_image to be added.
+
+    x_extensions contains left and right extensions and y_extensions has
+    top and bottom extensions.
+    """
+    x_min_extension = x_offset_range[0] - x_offset
+    x_max_extension = (x_offset + new_shape[-2]) - x_offset_range[1]
+    y_min_extension = y_offset_range[0] - y_offset
+    y_max_extension = (y_offset + new_shape[-2]) - y_offset_range[1]
+    x_extensions = [x_min_extension, x_max_extension]
+    y_extensions = [y_min_extension, y_max_extension]
+    return x_extensions, y_extensions
+
+
+def _get_new_image_slices(new_shape: tuple[int], 
+                          x_extensions: list[int], 
+                          y_extensions: list[int],
+                          ) -> tuple[slice]:
     """
     Gets image position slices where new_image will be inserted
     into stitched_image array.
     """
+    #if extensions were added to left side of image to make room for
+    #new image
     if x_extensions[0] > 0:
-        x_slice = slice(0, image_dims[1])
+        x_slice = slice(0, new_shape[-1])
+    #if x_extensions[0] <= 0 then no extensions were added, and so -extensions[0]
+    #is the relativive offset from the left side of the image.
     else:
-        x_slice = slice(-x_extensions[0], image_dims[1] - x_extensions[0])
-
+        x_slice = slice(-x_extensions[0], new_shape[-1] - x_extensions[0])
+    #same idea as x except for from the top of the image.
     if y_extensions[0] > 0:
-        y_slice = slice(0, image_dims[0])
+        y_slice = slice(0, new_shape[-2])
     else:
-        y_slice = slice(-y_extensions[0], image_dims[0] - y_extensions[0])
+        y_slice = slice(-y_extensions[0], new_shape[-2] - y_extensions[0])
     return x_slice, y_slice
+
+
+def _place_new_image(stitched_image: np.ndarray, 
+                     new_image: np.ndarray, 
+                     slices: tuple[slice]
+                     ) -> np.ndarray:
+    #If two images are added with the same stage position (ie, if z-stack 
+    #is split into two files because it's too large for one), second region
+    #would just overwrite the first. This takes a max projection of the
+    #newly added region and the previously added one so this doesn't 
+    #happen.
+    #region of image where new image will be placed
+    stitched_region = stitched_image[slices[1], slices[0]]
+    #array containing both region of stitched image and new image to be added
+    region_array = np.array((stitched_region, new_image))
+    #creates new array with max values between the two arrays
+    new_region = np.max(region_array, 0)
+    #places new region into stitched image.
+    stitched_image[slices[1], slices[0]] = new_region
+    return stitched_image
+
+
+def _update_offset_range(new_shape: tuple[int],
+                         x_offset: int,
+                         y_offset: int,
+                         x_offset_range: list[int], 
+                         y_offset_range: list[int],
+                         ) -> tuple[list[int]]:
+    """
+    Determines new stitched image range by comparing min and max values of
+    old stitched image range and offsets. If new image is added with offset
+    within these new ranges, extensions will not have to be added.
+    """
+    x_offset_range[0] = min(x_offset_range[0], x_offset)
+    y_offset_range[0] = min(y_offset_range[0], y_offset)
+    x_offset_range[1] = max(x_offset_range[1], x_offset + new_shape[-1])
+    y_offset_range[1] = max(y_offset_range[1], y_offset + new_shape[-2])
+    return x_offset_range, y_offset_range
