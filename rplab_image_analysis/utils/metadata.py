@@ -14,7 +14,7 @@ class MMMetadata(object):
     file_path: str
         file path of MM tif image.
     """
-    def __init__(self, file_path: str):
+    def __init__(self, file_path: pathlib.Path):
         self.file_path = file_path
         self._metadata_dict: dict = self._get_metadata_dict()
         self.summary_metadata: dict = self._metadata_dict["Summary"]
@@ -25,12 +25,18 @@ class MMMetadata(object):
 
     def _get_metadata_dict(self) -> dict:
         parent_file_generator = pathlib.Path(self.file_path).parent.iterdir()
-        parent_files = [str(file) for file in parent_file_generator]
-        for file in parent_files:
-            if get_file_subtype(file) == FileSubtype.METADATA:
-                return json.load(open(file))
+        for file in parent_file_generator:
+            #first, checks if there's a metadata file that matches file name
+            if self.file_path.name.split(".")[0] == file.name.split("_metadata")[0]:
+                 if get_file_subtype(file) == FileSubtype.METADATA:
+                     return json.load(open(file))
         else:
-            raise FileNotFoundError("MMMetadata file not found in directory.")
+            #if no match is found, assumes whatever metadata file is in the folder
+            #is the correct one.
+            for file in parent_file_generator:
+                if get_file_subtype(file) == FileSubtype.METADATA:
+                    return json.load(open(file))
+        raise FileNotFoundError("MMMetadata file not found in directory.")
     
     def _get_dimensions(self) -> dict:
         stack = TiffFile(self.file_path)
@@ -69,22 +75,23 @@ class MMImageMetadata(object):
         T = "time"
         Z = "z"
 
-        if "C" in self.coords.keys():
+        try:
             channel_num = self.coords['C']
-        else:
+        except KeyError:
             channel_num = 0
-        if "P" in self.coords.keys():
+        try:
             position_num = self.coords['P']
-        else:
+        except KeyError:
             position_num = 0
-        if "T" in self.coords.keys():
+        try:
             time_num = self.coords['T']
-        else:
+        except KeyError:
             time_num = 0
-        if "Z" in self.coords.keys():
+        try:
             z_num = self.coords['Z']
-        else:
+        except KeyError:
             z_num = 0
+            
         return f"{C}{channel_num:03d}_{P}{position_num:03d}_{T}{time_num:03d}_{Z}{z_num:03d}"
     
     def _get_coords(self):
@@ -109,18 +116,25 @@ class LSPycroMetadata(object):
     ## Constructor Parameters:
 
     tif_file_path: str
-        file path of MM tif image.
+        file path of MM tif image from LS_Pycro_App acquisition.
     """
+    ACQUISITION = "Acquisition"
+
     def __init__(self, tif_file_path: str):
         self._config = ConfigParser()
         self._init_config(tif_file_path)
 
     def _init_config(self, directory: str):
-        file_generator = pathlib.Path(directory).iterdir()
-        files = [str(file) for file in file_generator]
-        for file in files:
+        acq_path = pathlib.Path(directory)
+        if LSPycroMetadata.ACQUISITION in str(acq_path):
+            while LSPycroMetadata.ACQUISITION not in acq_path.stem:
+                acq_path = acq_path.parent
+        else:
+            raise FileNotFoundError("Acquisition folder not found.")
+        for file in acq_path.iterdir():
             if get_file_subtype(file) == FileSubtype.LS_NOTES:
                 self._config.read(file)
+                print(file)
                 break
         else:
             raise FileNotFoundError("LSPycroMetadata file not found in directory.")
@@ -141,3 +155,4 @@ def is_micro_manager(file_path: str | pathlib.Path):
         return True
     except FileNotFoundError:
         return False
+    
