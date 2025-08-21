@@ -2,7 +2,12 @@ For reproducibility here is the setup of the rplab_image_analysis environment in
 
 channel used is: conda-forge with channel priority set to strict
 
+#preferred (gets the latest version of python)
+conda create --name rplab_image_analysis python
+#alternative
 conda create --name rplab_image_analysis
+
+#activate environment
 conda activate rplab_image_analysis
 
 #Set libmamba solver as default
